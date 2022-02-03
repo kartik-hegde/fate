@@ -49,8 +49,11 @@ class Accelerator:
         print("PEs instantiated.")
 
         # Update workers
+        workers = {}
+        for idx,worker in enumerate(self.PEs):
+            workers['Worker'+str(idx)] = worker
         for worker in self.PEs:
-            worker.update_workers(self.PEs)
+            worker.update_workers(workers)
 
     def preload_dram(self):
         """ Lets you load the DRAM."""
@@ -106,3 +109,8 @@ class Accelerator:
         # Simulation Complete. Save the results.
         print("\n\nRun Completed in {0}".format(self.logger['end_sim'] - self.logger['start_sim']))
         np.save(str(run_id) + "_stats.npy", self.logger)
+
+if __name__ == "__main__":
+    from fate.TB.tests.test_sanity import test_sanity
+
+    test_sanity()

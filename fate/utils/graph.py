@@ -15,6 +15,7 @@ class Node:
         self.children = children
         self.name = name
         self.payload = payload
+        self.dependency_count = 0
 
 class Graph(object):
     """

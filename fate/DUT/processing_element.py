@@ -4,7 +4,7 @@ import sys
 from fate.DUT.buffet import Buffet
 from fate.DUT.cache import CacheModule
 from fate.DUT.network import Network
-
+from fate.DUT.functionalUnit import FunctionalUnit
 class ProcessingElement:
 
     def __init__(self, env, parameters, dram, sidecar_cache, inter_pe_noc, pe_sidecar_noc, scheduler, logger, name) -> None:
@@ -37,10 +37,12 @@ class ProcessingElement:
                             ACCESS_GRANULARITY=parameters.ACCESS_GRANULARITY, linesize=parameters.CACHELINE_SIZE, associativity=parameters.L1D_ASSOCIATIVITY,
                             write_through=True, logger=logger['L1_dCache'], name='L1-dcache_PE'+str(name))
 
+        self.functional_unit = FunctionalUnit(env, parameters, self.l1_dcache)
         self.workers = None
         self.current_node_id = None
         self.current_consumer = None
-        self.streaming_memory = Buffet(env, parameters, parameters.STR_MEMORY_SIZE)
+        self.streaming_memory = {}
+        self.producer_handshake_container = simpy.Container(self.env, init=0)
         # Stages of any node: POLL -> STAGE -> EXECUTE -> COMPLETE
         self.state = 'POLL'
 
@@ -48,46 +50,75 @@ class ProcessingElement:
         """Update Workers"""
         self.workers = workers
 
+    def update_streaming_memory(self, node):
+        """Based on number of parents, streaming memory gets updated (split)"""
+        mem_size = self.parameters.STR_MEMORY_SIZE//max(1, len(node.parents))
+        for parent in node.parents:
+            self.streaming_memory[parent] =  Buffet(self.env, self.parameters, mem_size)
+
+    def handshake(self):
+        """Every Producer must perform a handshake before proceeding. Ensures consumer is ready to receive."""
+        yield self.producer_handshake_container.get(1)
+
     def run(self):
         """
             Main control unit that runs the PE by transitioning through different stages.
         """
         while True:
 
-
             if(self.state == 'POLL'):
-                # Ask for a node from the instruction queue (shared among PEs, one per cluster)
-                if(self.scheduler.check_completion()):
-                    yield self.env.timeout(1)
-                    self.state = 'DONE'
-                
-                # Wait until a ready node is available
-                yield (self.scheduler.ready_nodes_container.get(1) | self.env.timeout(10))
-                self.current_node = yield self.env.process(self.scheduler.get_node(self.name))
-                if(self.current_node == None):
-                    print("Program Completion noted in PE{0}. Transitioning to DONE.".format(self.name))
-                    self.state = 'DONE'
-                else:
-                    print("Got Node {0} at PE{1}. Transitioning to STAGE.".format(self.current_node.payload, self.name))
-                    self.state = 'STAGE'
-                yield self.env.timeout(1)
+
+                # Poll until a node is assigned to the PE from scheduler
+                while True:
+                    
+                    # Ask the scheduler for a node (or timeout if it takes too long)
+                    get_node_process = self.env.process(self.scheduler.get_node()) 
+                    get_current_node = yield (get_node_process | self.env.timeout(10))
+
+                    # Make sure we did not timeout and _actually_ got a node
+                    if(get_node_process in get_current_node):
+                        self.current_node = get_current_node[get_node_process]
+                        # Looks like the program is complete! Exit the polling
+                        if(self.current_node == 'Complete'):
+                            print("Program Completion noted in PE{0}. Transitioning to DONE.".format(self.name))
+                            self.state = 'DONE'
+                            break
+                        # Got a valid node. Update required data strucutres and proceed to stage.
+                        else:
+                            print("Got Node {0} at PE{1}. Transitioning to STAGE.".format(self.current_node.payload, self.name))
+                            self.state = 'STAGE'
+
+                            # Udpate the scheduler data structures
+                            yield self.env.process(self.scheduler.update_scheduler_by_producer(self.current_node, self.name))
+                            # Update local data structures
+                            if(len(self.current_node.parents)>0):
+                                # Update the streaming memories 
+                                self.update_streaming_memory(self.current_node)
+                                # Add to container for handshake with producer
+                                self.producer_handshake_container.put(len(self.current_node.parents))
+                            break
 
             # Stage the instruction, i.e., remains in staged until it is ready to execute and consumer is identified and ready.
             elif(self.state == 'STAGE'):
-                yield self.env.timeout(1)
+
+                # Step 1: Receive the consumer list from the scheduler
                 consumer_ids = yield self.env.process(self.scheduler.get_consumer(self.current_node.name))
-                # Terminal Node
-                if(consumer_ids == None):
-                    self.current_consumer = None
-                    print("Terminal Node for node {0} at PE{1}. Transitioning to EXECUTE.".format(self.current_node.payload, self.name))
-                else:
-                    # self.current_consumers = [self.workers[consumer_id] for consumer_id in consumer_ids]
+                # Step 2: Handshake with every consumer to ensure they are ready.
+                if(consumer_ids != None):
+                    self.current_consumers = [self.workers[consumer_id] for consumer_id in consumer_ids]
+                    for consumer in self.current_consumers:
+                        yield self.env.process(consumer.handshake())
                     print("Got the consumers: {0} for node {1} at PE{2}. Transitioning to EXECUTE.".format(consumer_ids, self.current_node.payload, self.name))
+                # Terminal Node (No Need to handshake)
+                else:
+                    self.current_consumers = None
+                    print("Terminal Node for node {0} at PE{1}. Transitioning to EXECUTE.".format(self.current_node.payload, self.name))
+                # Step 3: Transition to executing the workload
                 self.state = 'EXECUTE'
 
             # We know the consumer, they are ready to receive and PE has resources to start execution. Starts execution.
             elif(self.state == 'EXECUTE'):
-                yield self.env.timeout(1)
+                # Execute the current node
                 yield self.env.process(self.execute(self.current_node))
                 print("Completed Execution of Node {0} at PE{1}. Transitioning to COMPLETE.".format(self.current_node.payload, self.name))
                 self.state = 'COMPLETE'
@@ -100,7 +131,7 @@ class ProcessingElement:
                 self.state = 'POLL'
 
             elif(self.state == 'DONE'):
-                yield self.env.timeout(10)
+                yield self.env.timeout(1)
                 break
 
             else:
@@ -113,6 +144,13 @@ class ProcessingElement:
     def execute(self, node):
         """Execute the given node"""
         yield self.env.timeout(10)
+        """
+        # Input streams for the node (fixed for any node. For example, Interesect always has 4 in)
+        input_streams = list(self.streaming_memory.values())
+        # Output streams depend on number of consumers. For each consumer, fixed
+        output_consumers = [list(consumer.streaming_memory.values()) for consumer in self.current_consumers]
+        yield self.functional_unit.run(node.payload, [])
+        """
 
 if __name__ == "__main__":
 

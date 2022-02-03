@@ -1,3 +1,4 @@
+import queue
 import simpy
 
 class SimpleQueue:

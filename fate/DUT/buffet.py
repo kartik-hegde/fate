@@ -12,31 +12,27 @@ class Buffet:
         self.head = 0
         self.tail = 0
         self.credits = simpy.Container(env, capacity=size, init=size)
+        self.valid_data = simpy.Container(env, capacity=size, init=0)
         self.buffet = [0 for _ in range(size)]
-        self.will_update = [simpy.Resource(env, capacity=1) for _ in range(size)]
         
-    def read(self, addr, will_update=False):
+    def read(self, addr, shrink=False):
         """
             Read data from current head + offset. 
             Any read that is out of valid space will block.
         """
         # Time penalty
         yield self.env.timeout(self.params.BUFFET_R_LATENCY)
-
+        # Make sure the data exists
+        yield self.valid_data.get(1)
+        # Check if it is within valid region
         assert self._within_valid_region(addr), "Invalid address"
-        will_update_lock = None
         # Calculte the actual address
         addr = (self.head + addr)%self.size
-        # Check if someone holds this slot as "will update". If yes, wait.
-        if(self.will_update[addr].count != 0):
-            with self.will_update[addr].request() as req:
-                yield req
-        # If this read wants to update later, then set the flag
-        if(will_update):
-            will_update_lock = self.will_update[addr].request()
-            yield will_update_lock
+        # Shrink if requested
+        if(shrink):
+            self.shrink(1)
         # Return the value
-        return self.buffet[addr], will_update_lock
+        return self.buffet[addr]
 
     def fill(self, value, latency=0):
         """
@@ -50,6 +46,8 @@ class Buffet:
         yield self.env.timeout(latency + self.params.BUFFET_W_LATENCY)
         # Reduce credits 
         yield self.credits.get(1)
+        # Increase valid region
+        yield self.valid_data.put(1)
 
         assert (not self._is_full()), "Buffet full. Credit check seems to have failed."
         # Write and increment tail
@@ -69,7 +67,7 @@ class Buffet:
         # Add credits
         yield self.credits.put(size)
 
-    def update(self, addr, value, release=None, latency=0):
+    def update(self, addr, value, latency=0):
         """
             Update performed within valid space. If it exceeds valid space, request ignored.    
         """
@@ -82,9 +80,6 @@ class Buffet:
         # Update value
         # print("Updating {0} with {1}".format(addr, value))
         self.buffet[addr] = value
-        # If lock was held for update, release
-        if(release!= None):
-            yield self.will_update[addr].release(release)
 
     def bulk_fill(self, values):
         "Fills bulk data using the fill routine"

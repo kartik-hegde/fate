@@ -26,44 +26,61 @@ class Scheduler:
         self.unexecuted_nodes = [node.name for node in graph.graph]
         yield self.env.process(self.update_ready_nodes_resource([graph.graph[0].name,]))
 
-    def update_ready_nodes_resource(self, nodes):
+    def update_ready_nodes_resource(self, children):
         """Updates ready nodes based on avaiability."""        
-        for node in nodes:
-            self.ready_nodes.push(node)
-            self.unexecuted_nodes.remove(node)
-            resource = simpy.Resource(self.env, capacity=1)
-            req = resource.request()
-            yield req
-            self.ready_nodes_resource[node] = (resource, req)
+        credit = 0
+        for node_id in children:
+            # Add to resources (for producers to poll on)
+            if(node_id not in self.ready_nodes_resource):
+                resource = simpy.Resource(self.env, capacity=1)
+                req = resource.request()
+                yield req
+                self.ready_nodes_resource[node_id] = (resource, req)
+
+            # Check if every parent node has been assigned (all dependencies resolved.)
+            # If yes, add to ready nodes
+            node = self.graph.graph[node_id]
+            node.dependency_count += 1
+            if(node.dependency_count >= len(node.parents)):
+                self.unexecuted_nodes.remove(node_id)
+                self.ready_nodes.push(node_id)
+                # Add a credit
+                credit += 1
+        return credit
             
-    def get_node(self, worker_name):
+    def get_node(self):
         """
             Returns a node whose dependencies have been satisfied.
             Also updates the ready nodes to include its children.
         """
         # If nothing left, then exit.
         if(self.check_completion()):
-            yield self.env.timeout(1)
-            return None
+            return 'Complete'
 
+        # Make sure there are ready nodes available
+        yield self.ready_nodes_container.get(1)
         # Get the node id and the node
         node_id = self.ready_nodes.pop()
         node = self.graph.graph[node_id]
 
+        return node
+    
+    def update_scheduler_by_producer(self, node, worker_name):
+        """Updates the scheduler data structures (done by the producer)."""
         # Update executing nodes
-        self.executing_nodes[node_id] = worker_name
-
+        self.executing_nodes[node.name] = worker_name
         # Update ready nodes
         with self.update_nodes_lock.request() as req:
             yield req 
             if(len(node.children)>0):
                 children = list(set([child for child in node.children if((child not in self.ready_nodes.queue) and (child not in self.executing_nodes))]))
-                yield self.env.process(self.update_ready_nodes_resource(children))
-                if(len(children) > 0):
-                    yield self.ready_nodes_container.put(len(children))
+                # Update the ready nodes with only nodes with all their dependency completed. Credit goes to container.
+                credit = yield self.env.process(self.update_ready_nodes_resource(children))
+                if(credit > 0):
+                    yield self.ready_nodes_container.put(credit)
 
         # Release the lock on assigned node
-        resource, req = self.ready_nodes_resource[node_id]
+        resource, req = self.ready_nodes_resource[node.name]
         yield resource.release(req)
         # self.print_status()
         return node

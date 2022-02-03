@@ -57,7 +57,7 @@ def get_graph():
 
     return testGraph
 
-def test_nesting():
+def test_sanity():
 
     # Architectural Parameters
     arch_parameters = Parameters()
@@ -127,4 +127,4 @@ def test_nesting():
     return True
 
 if __name__ == "__main__":
-    test_nesting()
+    test_sanity()
