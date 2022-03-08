@@ -10,9 +10,11 @@ class Node:
     """
         Defines each node of the graph.
     """
-    def __init__(self, name, parents, children, payload):
+    def __init__(self, name, parents, parent_names, children, children_connections, payload):
         self.parents = parents
+        self.parent_names = parent_names
         self.children = children
+        self.children_connections = children_connections
         self.name = name
         self.payload = payload
         self.dependency_count = 0
@@ -24,22 +26,33 @@ class Graph(object):
     """
 
     def __init__(self):
-        self.graph = [Node(0, [], [], None),]
+        self.graph = []
+        self.root_nodes = []
 
-    def add_edges(self, parents, children, payload):
+    def update_root(self, node):
+        """Update the set of root nodes"""
+        self.root_nodes.append(node)
+
+    def add_edges(self, parents, parent_names, children, children_connections, payload):
         """
             Add the connections.
         """
         # We will return the length of graph, that should serve as the ID.
         assigned_id = len(self.graph)
         # Add the Node
-        self.graph.append(Node(assigned_id, parents, children, payload))
+        node = Node(assigned_id, parents, parent_names, children, children_connections, payload)
+        self.graph.append(node)
         # Add the edge to each parent
         for parent in parents:
             if assigned_id not in self.graph[parent].children:
                 self.graph[parent].children.append(assigned_id)
-
         return assigned_id
+
+    def add_parent_details(self, node_id, parent, connections):
+        """More details on which output of a parent is connected"""
+        # Update
+        node = self.graph[node_id]
+        node.parent_connections[parent] = connections
 
     def delete_edge(self, node1, node2):
         """

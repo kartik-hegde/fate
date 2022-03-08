@@ -10,7 +10,7 @@ class Parameters:
         # Pipeline
         ########################################################
 
-        self.NUM_PE = 5
+        self.NUM_PE = 16
         self.CACHELINE_SIZE = 64
         self.FREQUENCY = 2e9
         self.ADDR_WIDTH = 32
@@ -63,8 +63,8 @@ class Parameters:
 
         self.SIDECAR_SIZE = 1024*1024*32
         self.SIDECAR_OUTSTANDING_QSIZE = 128
-        self.SIDECAR_HIT_LATENCY = 29 # It is 30, 1 is added in the network
-        self.SIDECAR_MISS_LATENCY = 29
+        self.SIDECAR_HIT_LATENCY = 8 # It is 30, rest is added in the network
+        self.SIDECAR_MISS_LATENCY = 8
         self.SIDECAR_ASSOCIATIVITY = 16
 
         ########################################################
@@ -94,12 +94,12 @@ class Parameters:
         # On-Chip NoCs
         self.PE_SIDECAR_NOC_BW = 128e9 # 1 TB/s
         self.PE_SIDECAR_NOC_CACHELINES_PER_CYCLE = self.PE_SIDECAR_NOC_BW/(self.FREQUENCY*self.CACHELINE_SIZE)
-        self.PE_SIDECAR_NOC_LATENCY = 1 # Included in cache access time
+        self.PE_SIDECAR_NOC_LATENCY = 22 # Included in cache access time
 
         # On-Chip NoCs
         self.PE_PE_NOC_BW = 128e9 # 1 TB/s
         self.PE_PE_NOC_CACHELINES_PER_CYCLE = self.PE_PE_NOC_BW/(self.FREQUENCY*self.CACHELINE_SIZE)
-        self.PE_PE_NOC_LATENCY = 1 #TODO
+        self.PE_PE_NOC_LATENCY = 4 #TODO
 
         # SIDECAR - DRAM NoC (Connects SIDECAR to DRAM)
         # self.SIDECAR_DRAM_NOC_BW = 64e9 # 64 GB/s
@@ -131,7 +131,7 @@ class Parameters:
         ########################################################
         # Buffet Control
         ########################################################
-        self.STR_MEMORY_SIZE = 64
+        self.STR_MEMORY_SIZE = 2
         self.BUFFET_R_LATENCY = 1
         self.BUFFET_W_LATENCY = 1
         self.BUFFET_S_LATENCY = 1

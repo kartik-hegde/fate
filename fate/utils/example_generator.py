@@ -96,9 +96,11 @@ def write_tensor(tensor, outpath, format='coo'):
 
 def create_vector(size, density):
     """Returns a list of given size and density"""
-    vector_coords = random(1, size, density, 'csr')
-    vector_coords.sort_indices()
-    vector_coords = list(vector_coords.indices)
+    csr_coords = random(1, size, density, 'csr')
+    csr_coords.sort_indices()
+    vector_coords = list(csr_coords.indices)
     vector_vals = [1.0 for _ in range(len(vector_coords))]
     vector = list(zip(vector_coords, vector_vals))
-    return [element for item in vector for element in item]
+    # Format: [nnz, (coord, val), (coord, val), ..]
+    flat_vector = [csr_coords.nnz,] + [element for item in vector for element in item]
+    return vector_coords, flat_vector

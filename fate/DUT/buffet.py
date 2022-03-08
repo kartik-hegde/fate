@@ -5,10 +5,12 @@ from fate.parameters import Parameters
 class Buffet:
     """Sequential Fill - Random Access - Random Update"""
 
-    def __init__(self, env, parameters, size) -> None:
+    def __init__(self, env, parameters, name, size, network) -> None:
         self.env = env
         self.params = parameters
+        self.name = name
         self.size = size
+        self.network = network
         self.head = 0
         self.tail = 0
         self.credits = simpy.Container(env, capacity=size, init=size)
@@ -30,9 +32,14 @@ class Buffet:
         addr = (self.head + addr)%self.size
         # Shrink if requested
         if(shrink):
-            self.shrink(1)
+            yield self.env.process(self.shrink(1))
+        # Read from Buffet
+        value = self.buffet[addr]
         # Return the value
-        return self.buffet[addr]
+        # print("Read {0} from Addr {1} at {2}. Credits: {3}".format(value, addr, self.name, self.credits.level))
+        # Network latency
+        yield self.env.process(self.network_log(write=False))
+        return value
 
     def fill(self, value, latency=0):
         """
@@ -42,6 +49,8 @@ class Buffet:
 
             Assumption: sender has checked credits to ensure that there is space.
         """
+        # Network latency
+        yield self.env.process(self.network_log(write=True))
         # Time penalty (Aports idea to be able to add latency)
         yield self.env.timeout(latency + self.params.BUFFET_W_LATENCY)
         # Reduce credits 
@@ -49,10 +58,10 @@ class Buffet:
         # Increase valid region
         yield self.valid_data.put(1)
 
-        assert (not self._is_full()), "Buffet full. Credit check seems to have failed."
         # Write and increment tail
         # print("Writing to {0} with {1}".format(self.tail, value))
         self.buffet[self.tail] = value
+        # print("Wrote {0} to Addr {1} at {2}. Credits: {3}".format(value, self.tail, self.name, self.credits.level))
         self.tail = (self.tail + 1) % self.size
         # self.credits -= 1
 
@@ -66,6 +75,7 @@ class Buffet:
         self.head = (self.head + size) % self.size
         # Add credits
         yield self.credits.put(size)
+        # print("Shrunk {0} at {1}. Credits: {2}".format(size, self.name, self.credits.level))
 
     def update(self, addr, value, latency=0):
         """
@@ -118,7 +128,12 @@ class Buffet:
 
     def _is_full(self):
         """Return if full"""
-        return self.head == (self.tail + 1)%self.size
+        return self.head == ((self.tail + 1)%self.size)
+
+    def network_log(self, write=False):
+        """ This function makes sure the Network bandwidth is satisfied."""
+        # Is bandwidth available
+        yield self.env.process(self.network.transfer(self.params.CACHELINE_SIZE, write=write))
 
 
 if __name__ == "__main__":

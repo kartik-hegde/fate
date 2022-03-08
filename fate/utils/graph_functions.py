@@ -39,6 +39,10 @@ def read_graph(read_path, csr_return=False):
         # Return row pointer and col pointer
         return csr.indptr, csr.indices
 
+def reference_intersection(a, b):
+    """Intersection of two lists"""
+    return list(set(a) & set(b))
+
 def csr2csf(csr):
     """
         Read a CSR and return a CSF.

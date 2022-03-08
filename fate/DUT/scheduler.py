@@ -22,9 +22,11 @@ class Scheduler:
     def update_graph(self, graph):
         """Updates the graph data-structure"""
         self.graph = graph
-        self.ready_nodes_container = simpy.Container(self.env, init=1)
+        self.ready_nodes_container = simpy.Container(self.env, init=0)
         self.unexecuted_nodes = [node.name for node in graph.graph]
-        yield self.env.process(self.update_ready_nodes_resource([graph.graph[0].name,]))
+        credit = yield self.env.process(self.update_ready_nodes_resource(graph.root_nodes))
+        if(credit > 0):
+            yield self.ready_nodes_container.put(credit)
 
     def update_ready_nodes_resource(self, children):
         """Updates ready nodes based on avaiability."""        
@@ -48,7 +50,7 @@ class Scheduler:
                 credit += 1
         return credit
             
-    def get_node(self):
+    def get_node(self, worker):
         """
             Returns a node whose dependencies have been satisfied.
             Also updates the ready nodes to include its children.
@@ -63,6 +65,7 @@ class Scheduler:
         node_id = self.ready_nodes.pop()
         node = self.graph.graph[node_id]
 
+        print("\n\tNode {0} ({1}) is given to Worker {2}\n\n".format(node_id, node.payload, worker))
         return node
     
     def update_scheduler_by_producer(self, node, worker_name):
@@ -77,6 +80,7 @@ class Scheduler:
                 # Update the ready nodes with only nodes with all their dependency completed. Credit goes to container.
                 credit = yield self.env.process(self.update_ready_nodes_resource(children))
                 if(credit > 0):
+                    print("Adding. Credit returned for {0} is {1} = {2}".format(node.name, credit, self.ready_nodes_container.level))
                     yield self.ready_nodes_container.put(credit)
 
         # Release the lock on assigned node

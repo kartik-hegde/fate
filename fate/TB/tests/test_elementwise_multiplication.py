@@ -17,13 +17,15 @@ from fate.utils.graph import Graph
 from fate.utils.preloader import data_to_cacheline
 from fate.DUT.logger import Logger
 from fate.utils.example_generator import create_vector
+from fate.utils.graph_functions import reference_intersection
 
-def get_tensors():
+def get_tensors(length, density=0.25):
     """Get example tensors"""
-    a = create_vector(128, 0.25)
-    b = create_vector(128, 0.25)
+    a_vec, a = create_vector(length, density)
+    b_vec, b = create_vector(length, density)
     z = []
-    return a,b,z
+    z_ref = reference_intersection(a_vec, b_vec)
+    return a,b,z,z_ref
 
 def get_aligned(addr, line_size):
     if(addr%line_size !=0):
@@ -33,10 +35,29 @@ def get_aligned(addr, line_size):
 
 def get_graph(tensors):
 
+    """
+    
+     0-----  ---- 2
+     |    |  |    |
+     1    |  |    3
+     |____|  |____|   
+        |_______|
+            |
+        ____4________
+        |      |    |
+        |      5    6
+        |      |____|    
+        |         |
+        |         7
+        |_________|
+              |
+              8
+              
+    """   
+
     # Create a random Graph.
     testGraph = Graph()
     program  = [
-        'Root',
         'GetHandles '+str(tensors[0]), 
         'HandlesToCoords '+str(tensors[0]), 
         'GetHandles '+str(tensors[1]),
@@ -44,47 +65,78 @@ def get_graph(tensors):
         'Intersect', 
         'HandlesToValues '+str(tensors[0]), 
         'HandlesToValues '+str(tensors[1]), 
-        'Compute',
+        'Compute mul',
         'Populate '+str(tensors[2]), 
         ]
 
-    # Insert the parent
-    testGraph.graph[0].payload = program[0]
     # Insert all the work
-    testGraph.add_edges([0],[2,5],program[1])
-    testGraph.add_edges([1],[5],program[2])
-    testGraph.add_edges([0],[4,5],program[3])
-    testGraph.add_edges([3],[5],program[4])
-    testGraph.add_edges([1,2,3,4],[6,7,9],program[5])
-    testGraph.add_edges([5],[8],program[6])
-    testGraph.add_edges([5],[8],program[7])
-    testGraph.add_edges([6,7],[9],program[8])
-    testGraph.add_edges([5,8],[],program[9])
-    testGraph.printGraph()
 
-    """
-    
-            0
-      ______|______
-     |            |
-     1-----  ---- 3
-     |    |  |    |
-     2    |  |    4
-     |____|  |____|   
-        |_______|
-            |
-        ____5________
-        |      |    |
-        |      6    7
-        |      |____|    
-        |         |
-        |         8
-        |_________|
-              |
-              9
-              
-    Current Assumption: Single stream between 2 operators
-    """            
+    # Node 0: GetHandles 1
+    parents = []
+    parent_names = []
+    children = [1, 4]
+    children_connections = {1:[(0,0),], 4:[(0,1),]} # Represents which input of consumer is connected to
+    testGraph.add_edges(parents,parent_names,children,children_connections, program[0])
+    testGraph.update_root(0)
+
+    # Node 1: HandlesToCoords 1
+    parents = [0]
+    parent_names = ['HandlesA']
+    children = [4]
+    children_connections = {4:[(0,0),]} #  Represents which input of consumer is connected to
+    testGraph.add_edges(parents,parent_names,children,children_connections, program[1])
+
+    # Node 2: GetHandles 1
+    parents = []
+    parent_names = []
+    children = [3, 4]
+    children_connections = {3:[(0,0),], 4:[(0,3),]} # Represents which input of consumer is connected to
+    testGraph.add_edges(parents,parent_names,children,children_connections, program[2])
+    testGraph.update_root(2)
+
+    # Node 3: HandlesToCoords 1
+    parents = [2]
+    parent_names = ['HandlesB']
+    children = [4]
+    children_connections = {4:[(0,2),]} #  Represents which input of consumer is connected to
+    testGraph.add_edges(parents,parent_names,children,children_connections, program[3])
+
+    # Node 4: Intersect
+    parents = [0,1,2,3]
+    parent_names = ['CoordsA', 'HandlesA', 'CoordsB', 'HandlesB',]
+    children = [5,6,8]
+    children_connections = {5:[(1,0),], 6:[(2,0),], 8:[(0,0),]} #  Represents which input of consumer is connected to
+    testGraph.add_edges(parents,parent_names,children,children_connections, program[4])
+
+    # Node 5: HandlesToValues 1
+    parents = [4]
+    parent_names = ['HandlesIntersectedA']
+    children = [7]
+    children_connections = {7:[(0,0),]} #  Represents which input of consumer is connected to
+    testGraph.add_edges(parents,parent_names,children,children_connections, program[5])
+
+    # Node 6: HandlesToValues 2
+    parents = [4]
+    parent_names = ['HandlesIntersectedB']
+    children = [7]
+    children_connections = {7:[(0,1),]} #  Represents which input of consumer is connected to
+    testGraph.add_edges(parents,parent_names,children,children_connections, program[6])
+
+    # Node 7: Compute
+    parents = [5,6]
+    parent_names = ['ValuesIntersectedA', 'ValuesIntersectedB']
+    children = [8]
+    children_connections = {8:[(0,1),]} #  Represents which input of consumer is connected to
+    testGraph.add_edges(parents,parent_names,children,children_connections, program[7])
+
+    # Node 8: Populate
+    parents = [4,7]
+    parent_names = ['CoordsZ', 'ValuesZ']
+    children = []
+    children_connections = {} #  Represents which input of consumer is connected to
+    testGraph.add_edges(parents,parent_names,children,children_connections, program[8])
+
+    testGraph.printGraph()
 
     return testGraph
 
@@ -112,7 +164,9 @@ def test_elementwise_multiply():
     print("Preloading DRAM")
 
     # Get the tensors
-    tensors = get_tensors()
+    tensors = get_tensors(length=1024*1024, density=0.01)
+    reference_result = reference_intersection(tensors[0], tensors[1])
+
     # Create base addresses
     MAX_TENSOR = 1024*1024*8
     # Base of the shared memory
@@ -149,16 +203,18 @@ def test_elementwise_multiply():
     # Run until completion
     env.run(proc)
 
-    """
     def test_correctness():
         # Only PE0 ran the workload
         pe_instance = accelerator_instance.PEs[0]
 
         # Preload
-        value = yield env.process(pe_instance.l1_dcache.read(BASE))
+        nnz = yield env.process(pe_instance.l1_dcache.read(Z_PTR))
+        reference_result = tensors[-1]
+        reference_nnz = len(reference_result)
 
-        if(value != 16):
-            print("Expected {0} for PE {1} at {3}, but got {2}".format(16, 0, value, BASE))
+        if(nnz != reference_nnz):
+            print("Expected {0} for PE {1} at {3}, but got {2}".format(reference_nnz, 0, nnz, Z_PTR))
+            print(reference_result)
             sys.exit("\n\n\t\tNESTING TEST FAILED.")
 
         return None
@@ -168,9 +224,11 @@ def test_elementwise_multiply():
 
     # Run until completion
     env.run(proc)
-    """
 
     print("\n\n\t\t SANITY TEST PASSED.")
+
+    # Print statistics
+    logger_instance.postprocess()
 
     return True
 
