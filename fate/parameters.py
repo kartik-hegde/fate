@@ -10,7 +10,7 @@ class Parameters:
         # Pipeline
         ########################################################
 
-        self.NUM_PE = 16
+        self.NUM_PE = 9
         self.CACHELINE_SIZE = 64
         self.FREQUENCY = 2e9
         self.ADDR_WIDTH = 32
@@ -131,7 +131,7 @@ class Parameters:
         ########################################################
         # Buffet Control
         ########################################################
-        self.STR_MEMORY_SIZE = 2
+        self.STR_MEMORY_SIZE = 128
         self.BUFFET_R_LATENCY = 1
         self.BUFFET_W_LATENCY = 1
         self.BUFFET_S_LATENCY = 1

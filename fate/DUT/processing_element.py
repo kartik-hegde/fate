@@ -1,10 +1,12 @@
 import simpy
 import sys
+from copy import deepcopy
 
 from fate.DUT.buffet import Buffet
 from fate.DUT.cache import CacheModule
 from fate.DUT.network import Network
 from fate.DUT.functionalUnit import FunctionalUnit
+
 class ProcessingElement:
 
     def __init__(self, env, parameters, dram, sidecar_cache, inter_pe_noc, pe_sidecar_noc, scheduler, logger, name) -> None:
@@ -55,7 +57,10 @@ class ProcessingElement:
     def update_streaming_memory(self, node):
         """Based on number of parents, streaming memory gets updated (split)"""
         mem_size = self.parameters.STR_MEMORY_SIZE//max(1, len(node.parents))
-        self.streaming_memory =  [Buffet(self.env, self.parameters, self.current_node.payload + '-' + str(parent), mem_size, self.pe_sidecar_noc) for parent in node.parent_names]
+        # Create and add loggers
+        loggers = [deepcopy(self.logger['buffet_logger']) for _ in range(len(node.parents))]
+        self.logger['buffets'] += loggers
+        self.streaming_memory =  [Buffet(self.env, self.parameters, loggers[idx], self.current_node.identifier + '-' + str(parent), mem_size, self.pe_sidecar_noc) for idx,parent in enumerate(node.parent_names)]
 
     def handshake(self):
         """Every Producer must perform a handshake before proceeding. Ensures consumer is ready to receive."""
@@ -100,6 +105,7 @@ class ProcessingElement:
                             if(len(self.current_node.parents)>0):
                                 # Add to container for handshake with producer
                                 self.producer_handshake_container.put(len(self.current_node.parents))
+                            self.logger['name'] = self.current_node.identifier
                             break
                 self.logger['cycles_spent']['POLL'] += self.env.now - time_start
 

@@ -5,9 +5,10 @@ from fate.parameters import Parameters
 class Buffet:
     """Sequential Fill - Random Access - Random Update"""
 
-    def __init__(self, env, parameters, name, size, network) -> None:
+    def __init__(self, env, parameters, logger, name, size, network) -> None:
         self.env = env
         self.params = parameters
+        self.logger = logger
         self.name = name
         self.size = size
         self.network = network
@@ -16,6 +17,7 @@ class Buffet:
         self.credits = simpy.Container(env, capacity=size, init=size)
         self.valid_data = simpy.Container(env, capacity=size, init=0)
         self.buffet = [0 for _ in range(size)]
+        self.logger['name'] = name
         
     def read(self, addr, shrink=False):
         """
@@ -24,6 +26,9 @@ class Buffet:
         """
         # Time penalty
         yield self.env.timeout(self.params.BUFFET_R_LATENCY)
+        # Log the time of read
+        self.logger['consumption'].append(self.env.now)
+        self.logger['usage'].append((self.env.now, self.get_occupancy()))
         # Make sure the data exists
         yield self.valid_data.get(1)
         # Check if it is within valid region
@@ -53,8 +58,10 @@ class Buffet:
         yield self.env.process(self.network_log(write=True))
         # Time penalty (Aports idea to be able to add latency)
         yield self.env.timeout(latency + self.params.BUFFET_W_LATENCY)
+        # Log the time of write
+        self.logger['production'].append(self.env.now)
         # Reduce credits 
-        yield self.credits.get(1)
+        # yield self.credits.get(1)
         # Increase valid region
         yield self.valid_data.put(1)
 
@@ -113,6 +120,10 @@ class Buffet:
     def get_credits(self):
         """Returns total credits"""
         return self.credits.level
+
+    def get_occupancy(self):
+        """Returns % buffet full"""
+        return (1-(self.credits.level/self.size))*100
 
     def is_empty(self):
         """Check if empty"""

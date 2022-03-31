@@ -76,65 +76,74 @@ def get_graph(tensors):
     parent_names = []
     children = [1, 4]
     children_connections = {1:[(0,0),], 4:[(0,1),]} # Represents which input of consumer is connected to
-    testGraph.add_edges(parents,parent_names,children,children_connections, program[0])
+    node_name = 'GetHandles A'
+    testGraph.add_edges(parents,parent_names,children,children_connections, program[0], node_name)
     testGraph.update_root(0)
 
     # Node 1: HandlesToCoords 1
     parents = [0]
     parent_names = ['HandlesA']
     children = [4]
+    node_name = 'Handles2Coord A'
     children_connections = {4:[(0,0),]} #  Represents which input of consumer is connected to
-    testGraph.add_edges(parents,parent_names,children,children_connections, program[1])
+    testGraph.add_edges(parents,parent_names,children,children_connections, program[1], node_name)
 
     # Node 2: GetHandles 1
     parents = []
     parent_names = []
     children = [3, 4]
+    node_name = 'GetHandles B'
     children_connections = {3:[(0,0),], 4:[(0,3),]} # Represents which input of consumer is connected to
-    testGraph.add_edges(parents,parent_names,children,children_connections, program[2])
+    testGraph.add_edges(parents,parent_names,children,children_connections, program[2], node_name)
     testGraph.update_root(2)
 
     # Node 3: HandlesToCoords 1
     parents = [2]
     parent_names = ['HandlesB']
     children = [4]
+    node_name = 'Handles2Coord B'
     children_connections = {4:[(0,2),]} #  Represents which input of consumer is connected to
-    testGraph.add_edges(parents,parent_names,children,children_connections, program[3])
+    testGraph.add_edges(parents,parent_names,children,children_connections, program[3], node_name)
 
     # Node 4: Intersect
     parents = [0,1,2,3]
     parent_names = ['CoordsA', 'HandlesA', 'CoordsB', 'HandlesB',]
     children = [5,6,8]
+    node_name = 'intersect'
     children_connections = {5:[(1,0),], 6:[(2,0),], 8:[(0,0),]} #  Represents which input of consumer is connected to
-    testGraph.add_edges(parents,parent_names,children,children_connections, program[4])
+    testGraph.add_edges(parents,parent_names,children,children_connections, program[4], node_name)
 
     # Node 5: HandlesToValues 1
     parents = [4]
     parent_names = ['HandlesIntersectedA']
     children = [7]
+    node_name = 'Handles2Val A'
     children_connections = {7:[(0,0),]} #  Represents which input of consumer is connected to
-    testGraph.add_edges(parents,parent_names,children,children_connections, program[5])
+    testGraph.add_edges(parents,parent_names,children,children_connections, program[5], node_name)
 
     # Node 6: HandlesToValues 2
     parents = [4]
     parent_names = ['HandlesIntersectedB']
     children = [7]
+    node_name = 'Handles2Val B'
     children_connections = {7:[(0,1),]} #  Represents which input of consumer is connected to
-    testGraph.add_edges(parents,parent_names,children,children_connections, program[6])
+    testGraph.add_edges(parents,parent_names,children,children_connections, program[6], node_name)
 
     # Node 7: Compute
     parents = [5,6]
     parent_names = ['ValuesIntersectedA', 'ValuesIntersectedB']
     children = [8]
+    node_name = 'Compute'
     children_connections = {8:[(0,1),]} #  Represents which input of consumer is connected to
-    testGraph.add_edges(parents,parent_names,children,children_connections, program[7])
+    testGraph.add_edges(parents,parent_names,children,children_connections, program[7], node_name)
 
     # Node 8: Populate
     parents = [4,7]
     parent_names = ['CoordsZ', 'ValuesZ']
     children = []
+    node_name = 'Populate'
     children_connections = {} #  Represents which input of consumer is connected to
-    testGraph.add_edges(parents,parent_names,children,children_connections, program[8])
+    testGraph.add_edges(parents,parent_names,children,children_connections, program[8], node_name)
 
     testGraph.printGraph()
 

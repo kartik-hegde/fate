@@ -10,7 +10,7 @@ class Node:
     """
         Defines each node of the graph.
     """
-    def __init__(self, name, parents, parent_names, children, children_connections, payload):
+    def __init__(self, name, parents, parent_names, children, children_connections, payload, identifier):
         self.parents = parents
         self.parent_names = parent_names
         self.children = children
@@ -18,6 +18,7 @@ class Node:
         self.name = name
         self.payload = payload
         self.dependency_count = 0
+        self.identifier = identifier
 
 class Graph(object):
     """
@@ -33,14 +34,14 @@ class Graph(object):
         """Update the set of root nodes"""
         self.root_nodes.append(node)
 
-    def add_edges(self, parents, parent_names, children, children_connections, payload):
+    def add_edges(self, parents, parent_names, children, children_connections, payload, identifier):
         """
             Add the connections.
         """
         # We will return the length of graph, that should serve as the ID.
         assigned_id = len(self.graph)
         # Add the Node
-        node = Node(assigned_id, parents, parent_names, children, children_connections, payload)
+        node = Node(assigned_id, parents, parent_names, children, children_connections, payload, identifier)
         self.graph.append(node)
         # Add the edge to each parent
         for parent in parents:
